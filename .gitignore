@@ -1,0 +1,9 @@
+sdkconfig
+sdkconfig.old
+build
+nbproject
+
+*.bat
+
+led.txt
+log.txt
