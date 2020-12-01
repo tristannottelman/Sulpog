@@ -24,6 +24,9 @@
 #define LED_BUTTON_INST_ID              1
 #define CERT_INST_ID              2
 
+#define NVS_STATS 0
+#define NVS_COLOR 1
+
 
 /* The max length of characteristic value. When the gatt client write or prepare write,
  *  the data length must be less than MAX_VALUE_LENGTH.
@@ -50,6 +53,12 @@
 #define PATTERN_CATCH_SUCCES 6
 #define PATTERN_CATCH_FAIL 117
 
+// The battery decreased faster below 500 and really fast below 450
+#define BATTERY_MAX 596 //600 should be safer
+#define BATTERY_MIN 420
+#define BATTERY_OFFSET 20
+// The absolute minimum is 383. This should be increased, because the last 50 or so goes really fast
+
 #define MAIN_FONT DEJAVU24_FONT
 #define DETAIL_FONT DEFAULT_FONT
 
@@ -62,42 +71,45 @@
 #define EX_UART_NUM UART_NUM_0
 
 //Battery service
+
 enum {
-  IDX_BATTERY_SVC,
-  IDX_CHAR_BATTERY_LEVEL,
-  IDX_CHAR_BATTERY_LEVEL_VAL,
-  IDX_CHAR_BATTERY_LEVEL_CFG,
-  BATTERY_LAST_IDX
+    IDX_BATTERY_SVC,
+    IDX_CHAR_BATTERY_LEVEL,
+    IDX_CHAR_BATTERY_LEVEL_VAL,
+    IDX_CHAR_BATTERY_LEVEL_CFG,
+    BATTERY_LAST_IDX
 };
 
 //LED/BUTTON service
+
 enum {
-  IDX_LED_BUTTON_SVC,
-  IDX_CHAR_LED,
-  IDX_CHAR_LED_VAL,
-  IDX_CHAR_BUTTON,
-  IDX_CHAR_BUTTON_VAL,
-  IDX_CHAR_BUTTON_CFG,    
-  IDX_CHAR_UNKNOWN,
-  IDX_CHAR_UNKNOWN_VAL,
-  IDX_CHAR_UPDATE_REQUEST,
-  IDX_CHAR_UPDATE_REQUEST_VAL,
-  IDX_CHAR_FW_VERSION,
-  IDX_CHAR_FW_VERSION_VAL,
-  LED_BUTTON_LAST_IDX
+    IDX_LED_BUTTON_SVC,
+    IDX_CHAR_LED,
+    IDX_CHAR_LED_VAL,
+    IDX_CHAR_BUTTON,
+    IDX_CHAR_BUTTON_VAL,
+    IDX_CHAR_BUTTON_CFG,
+    IDX_CHAR_UNKNOWN,
+    IDX_CHAR_UNKNOWN_VAL,
+    IDX_CHAR_UPDATE_REQUEST,
+    IDX_CHAR_UPDATE_REQUEST_VAL,
+    IDX_CHAR_FW_VERSION,
+    IDX_CHAR_FW_VERSION_VAL,
+    LED_BUTTON_LAST_IDX
 };
 
 //Certificate service
+
 enum {
-  IDX_CERT_SVC,
-  IDX_CHAR_CENTRAL_TO_SFIDA,
-  IDX_CHAR_CENTRAL_TO_SFIDA_VAL,  
-  IDX_CHAR_SFIDA_COMMANDS,
-  IDX_CHAR_SFIDA_COMMANDS_VAL,  
-  IDX_CHAR_SFIDA_COMMANDS_CFG,      
-  IDX_CHAR_SFIDA_TO_CENTRAL,
-  IDX_CHAR_SFIDA_TO_CENTRAL_VAL,  
-  CERT_LAST_IDX
+    IDX_CERT_SVC,
+    IDX_CHAR_CENTRAL_TO_SFIDA,
+    IDX_CHAR_CENTRAL_TO_SFIDA_VAL,
+    IDX_CHAR_SFIDA_COMMANDS,
+    IDX_CHAR_SFIDA_COMMANDS_VAL,
+    IDX_CHAR_SFIDA_COMMANDS_CFG,
+    IDX_CHAR_SFIDA_TO_CENTRAL,
+    IDX_CHAR_SFIDA_TO_CENTRAL_VAL,
+    CERT_LAST_IDX
 };
 
 typedef struct {
@@ -131,10 +143,20 @@ static void gpio_task(void* arg);
 void configure_gpio();
 static void IRAM_ATTR gpio_isr_handler(void* arg);
 
+// NVS
+void nvs_init();
+void nvs_write(int8_t type);
+void nvs_read();
+void nvs_check_color_change();
+int8_t nvs_check_stats_change();
+
 // Display
 void init_display();
-void update_status_display(char *str);
-void update_display(char *str);
+void display_clean();
+void update_status_display();
+void update_display();
+uint32_t calculate_battery();
+void draw_battery();
 
 // Main
 void app_main();

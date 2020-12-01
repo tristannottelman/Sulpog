@@ -42,6 +42,8 @@ extern uint8_t tft_Comic24[];
 extern uint8_t tft_minya24[];
 extern uint8_t tft_tooney32[];
 extern uint8_t tft_def_small[];
+extern uint8_t tft_Digital32[];
+extern uint8_t tft_Pokemon48[];
 
 // ==== Color definitions constants ==============
 const color_t TFT_BLACK       = {   0,   0,   0 };
@@ -1508,6 +1510,8 @@ void TFT_setFont(uint8_t font, const char *font_file)
 	  else if (font == TOONEY32_FONT) cfont.font = tft_tooney32;
 	  else if (font == SMALL_FONT) cfont.font = tft_SmallFont;
 	  else if (font == DEF_SMALL_FONT) cfont.font = tft_def_small;
+	  else if (font == DIGITAL32_FONT) cfont.font = tft_Digital32;
+	  else if (font == POKEMON48_FONT) cfont.font = tft_Pokemon48;
 	  else cfont.font = tft_DefaultFont;
 
 	  cfont.bitmap = 1;

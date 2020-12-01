@@ -125,6 +125,8 @@ extern const color_t TFT_PINK;
 #define DEF_SMALL_FONT	8
 #define FONT_7SEG		9
 #define USER_FONT		10  // font will be read from file
+#define DIGITAL32_FONT  11
+#define POKEMON48_FONT  12
 
 
 

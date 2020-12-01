@@ -17,18 +17,50 @@
 
 #include "tftspi.h"
 #include "tft.h"
-#include "spiffs_vfs.h"
+//#include "spiffs_vfs.h" //not needed
 #include <time.h>
 #include <unistd.h>
 
-uint8_t font_color;
+#include "nvs_flash.h"
+#include "nvs.h"
 
-uint16_t pokemon_seen = 0;
-uint16_t pokemon_cought = 0;
-uint16_t pokestops = 0;
-uint16_t pokemon_changed = 0;
+int8_t font_color = 0;
+int8_t font_color_old = 0;
 
-uint8_t screensaver = 30;
+uint8_t color_size = 9;
+color_t colors[] = {
+    { 255 - 66, 255 - 135, 255 - 245}, //blue 
+    { 255 - 245, 255 - 245, 255 - 66}, //yellow
+    { 255 - 245, 255 - 20, 255 - 20}, //red
+    { 255 - 81, 255 - 245, 255 - 66}, //green
+    { 255 - 65, 255 - 242, 255 - 222}, //aqua
+    { 255 - 250, 255 - 160, 255 - 229}, //pink
+    { 255 - 177, 255 - 44, 255 - 230}, //purple
+    { 0, 0, 0}, //white
+    { 255 - 64, 255 - 64, 255 - 64} //gray
+};
+
+int16_t pokemon_seen = 0;
+int16_t pokemon_caught = 0;
+int16_t pokestops = 0;
+int16_t pokemon_changed = 0;
+
+uint8_t screensaver = 0;
+uint8_t screensaver_time = 30;
+
+uint8_t waiting_time = 60;
+uint8_t current_time = 60;
+
+uint8_t charging = 0;
+uint8_t screen_on = 1;
+uint8_t display_state = 0;
+
+int8_t minute = 60;
+int8_t second = 1;
+int8_t charging_prev = 0;
+int16_t battery_number = 0;
+
+uint8_t nvs_lock = 0;
 
 static QueueHandle_t button_queue;
 static QueueHandle_t uart0_queue;
@@ -445,7 +477,10 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
             } else {
                 ESP_LOGI(GATTS_TABLE_TAG, "advertising start successfully");
                 TFT_setFont(MAIN_FONT, NULL);
-                update_status_display("Ready");
+                display_clean();
+                update_display();
+                draw_battery();
+                update_status_display();
             }
             break;
         case ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT:
@@ -604,6 +639,7 @@ void handle_protocol(esp_gatt_if_t gatts_if, const uint8_t *prepare_buf, int dat
             //Clock
             if (xHandleClock == NULL) {
                 xTaskCreate(clock_task, "clock_task", 2048, NULL, 12, &xHandleClock);
+                display_state = 3;
             }
             break;
         }
@@ -650,6 +686,7 @@ void handle_protocol(esp_gatt_if_t gatts_if, const uint8_t *prepare_buf, int dat
                 //Clock
                 if (xHandleClock == NULL) {
                     xTaskCreate(clock_task, "clock_task", 2048, NULL, 12, &xHandleClock);
+                    display_state = 3;
                 }
             }
             break;
@@ -690,8 +727,8 @@ void handle_led_notify_from_app(const uint8_t *buffer) {
             ESP_LOGI(GATTS_TABLE_TAG, "Seen: %u", pokestops);
             break;
         case PATTERN_CATCH_SUCCES:
-            pokemon_cought++;
-            ESP_LOGI(GATTS_TABLE_TAG, "Cought: %u", pokestops);
+            pokemon_caught++;
+            ESP_LOGI(GATTS_TABLE_TAG, "Caught: %u", pokestops);
             break;
         default:
             ESP_LOGI(GATTS_TABLE_TAG, "Other pattern: %u", pattern_id);
@@ -878,7 +915,8 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 
             esp_ble_set_encryption(param->connect.remote_bda, ESP_BLE_SEC_ENCRYPT_MITM);
             TFT_setFont(MAIN_FONT, NULL);
-            update_status_display("Connecting");
+            display_state = 2;
+            update_status_display();
             if (xHandleWaiting != NULL) {
                 vTaskDelete(xHandleWaiting);
                 xHandleWaiting = NULL;
@@ -887,15 +925,17 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
         case ESP_GATTS_DISCONNECT_EVT:
             ESP_LOGI(GATTS_TABLE_TAG, "ESP_GATTS_DISCONNECT_EVT, reason = %d", param->disconnect.reason);
             if (xHandleClock != NULL) {
-                update_status_display(NULL);
+                display_clean();
                 vTaskDelete(xHandleClock);
                 xHandleClock = NULL;
             }
             if (xHandleWaiting == NULL) {
                 xTaskCreate(waiting_task, "waiting_task", 2048, NULL, 12, &xHandleWaiting);
+                display_state = 1;
             }
-            screensaver = 30;
-            gpio_set_level(GPIO_OUTPUT_IO, 1);
+            screensaver = screensaver_time;
+            screen_on = 1;
+            gpio_set_level(GPIO_OUTPUT_IO, screen_on);
             cert_state = 0;
 
             esp_ble_gap_start_advertising(&adv_params);
@@ -1086,34 +1126,47 @@ static void auto_button_task(void *pvParameters) {
 }
 
 static void waiting_task(void *pvParameters) {
+    int16_t task_time = 0;
+    charging_prev = charging;
     ESP_LOGI("WAITING", "[waiting task start]");
-    uint8_t time = 31;
-    while(true)
-    {
-        time--;
+    current_time = waiting_time + 1;
+    while (true) {
+        current_time--;
         sleep(1);
-        char outbuf[16];
-        snprintf(outbuf, sizeof (outbuf), "%02d", time);
-        TFT_setFont(DETAIL_FONT, NULL);
-        uint8_t ww = TFT_getStringWidth(outbuf);
-        TFT_print(outbuf,  (_width/2) - (ww/2) + 3, _height*0.7);
-        if (time == 0)
-        {
-            // deep sleep
-            esp_bluedroid_disable();
-            esp_bt_controller_disable();
-            esp_deep_sleep_start();
+        task_time++;
+        if (screen_on == 1) {
+            update_status_display();
+            update_display();
+            if (task_time % 5 == 0) {
+                draw_battery();
+                nvs_check_color_change();
+            }
+        }
+
+        if (charging == 1) {
+            current_time = waiting_time + 2;
+        } else {
+            if (current_time == 0) {
+                // deep sleep
+                fflush(stdout);
+                esp_bluedroid_disable();
+                esp_bt_controller_disable();
+                esp_deep_sleep_start();
+            }
         }
     }
 }
 
 static void clock_task(void *pvParameters) {
+    int16_t task_time = 0;
     ESP_LOGI("CLOCK", "[clock task start]");
-    pokemon_cought = pokemon_seen = pokestops = pokemon_changed = 0;
-    int minute = 60;
-    int second = 1;
-    char outbuf[16];
-    update_status_display(NULL);
+    pokemon_caught = pokemon_seen = pokestops = 0;
+    pokemon_changed = 2000;
+    display_clean();
+    screensaver = screensaver_time;
+    minute = 60;
+    second = 1;
+    charging_prev = charging;
     while (1) {
         second--;
         if (second == -1) {
@@ -1127,60 +1180,95 @@ static void clock_task(void *pvParameters) {
             fflush(stdout);
             esp_restart();*/
         }
-        
-        if (screensaver > 0)
-        {
+        if (charging_prev != charging) {
+            charging_prev = charging;
+            if (charging == 0) {
+                screensaver = screensaver_time;
+            }
+        }
+        if (screensaver > 0 && charging == 0) {
             screensaver--;
-            if (screensaver == 0)
-            {
+            if (screensaver == 0) {
                 gpio_set_level(GPIO_OUTPUT_IO, 0);
+                screen_on = 0;
             }
         }
 
-        snprintf(outbuf, sizeof (outbuf), "%02d : %02d ", minute, second);
-        update_display(outbuf);
+        if (screen_on == 1) {
+            update_display();
+            if (task_time % 5 == 0) {
+                draw_battery();
+                nvs_check_color_change();
+            }
+        } else {
+            nvs_check_stats_change();
+        }
+        task_time++;
         sleep(1); //wait for one second
     }
 }
 
-static void gpio_task(void* arg)
-{
+static void gpio_task(void* arg) {
     uint32_t io_num;
-    uint8_t len = 8;
-    color_t colors[] = {
-        TFT_YELLOW, //blue
-        TFT_BLUE, //yellow
-        TFT_CYAN, //red
-        TFT_MAGENTA, //green
-        TFT_RED, //aqua
-        TFT_DARKGREEN, //pink
-        TFT_GREEN, //purple
-        TFT_BLACK //white
-    };
-    for(;;) {
-        if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
-            printf("GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num));
-            switch(io_num)
-            {
+    uint8_t pressed0 = 1;
+    uint8_t pressed1 = 1;
+    for (;;) {
+        if (xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
+            //printf("GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num));
+            switch (io_num) {
                 case GPIO_INPUT_IO_0:
                     // change color
-                    if (font_color < len-1)
-                    {
-                        font_color++;
+                    if (screen_on == 1) {
+                        if (gpio_get_level(io_num) == 0) {
+                            if (pressed0 == 1) {
+                                pressed0 = 0;
+                                if (font_color < color_size - 1) {
+                                    font_color++;
+                                } else {
+                                    font_color = 0;
+                                }
+                                _fg = colors[font_color];
+                                pokemon_changed = 2000; //trigger update
+                                if (screen_on == 1) {
+                                    update_display();
+                                    update_status_display();
+                                    draw_battery();
+                                }
+                                if (display_state == 3) {
+                                    pokemon_changed++;
+                                }
+                            }
+                        } else {
+                            pressed0 = 1;
+                        }
                     }
-                    else
-                    {
-                        font_color = 0;
-                    }
-                    _fg = colors[font_color];
                     break;
                 case GPIO_INPUT_IO_1:
-                    // (re)enable screen
-                    screensaver = 60;
-                    gpio_set_level(GPIO_OUTPUT_IO, 1);
+                    // toggle display
+                    if (gpio_get_level(io_num) == 0) {
+                        if (pressed1 == 1) {
+                            pressed1 = 0;
+                            if (screen_on == 1) {
+                                screensaver = 0;
+                                screen_on = 0;
+                            } else {
+                                screensaver = screensaver_time;
+                                screen_on = 1;
+                                pokemon_changed = 2000; //trigger update
+                                update_display();
+                                update_status_display();
+                                draw_battery();
+                            }
+                            gpio_set_level(GPIO_OUTPUT_IO, screen_on);
+                            if (screen_on == 0) {
+                                display_clean();
+                            }
+                        }
+                    } else {
+                        pressed1 = 1;
+                    }
                     break;
             }
-            
         }
     }
 }
@@ -1191,13 +1279,13 @@ static void gpio_task(void* arg)
 
 void configure_gpio() {
     gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_PIN_INTR_POSEDGE;
-    io_conf.pin_bit_mask = GPIO_INPUT_PIN_SEL;  
+    io_conf.intr_type = GPIO_INTR_ANYEDGE; //GPIO_PIN_INTR_POSEDGE; //GPIO_INTR_ANYEDGE 
+    io_conf.pin_bit_mask = GPIO_INPUT_PIN_SEL;
     io_conf.mode = GPIO_MODE_INPUT;
     io_conf.pull_down_en = 1;
     io_conf.pull_up_en = 1;
     esp_err_t error = gpio_config(&io_conf);
-    if(error != ESP_OK){
+    if (error != ESP_OK) {
         printf("error configuring inputs \n");
     }
 
@@ -1208,25 +1296,148 @@ void configure_gpio() {
     io_conf.pull_up_en = 0;
     gpio_config(&io_conf);
     error = gpio_config(&io_conf);
-    if(error != ESP_OK){
+    if (error != ESP_OK) {
         printf("error configuring outputs \n");
     }
-    
+
     //create a queue to handle gpio event from isr
-    gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+    gpio_evt_queue = xQueueCreate(10, sizeof (uint32_t));
     //start gpio task
     xTaskCreate(gpio_task, "gpio_task", 2048, NULL, 10, NULL);
-    
+
     gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
     //hook isr handler for specific gpio pin
     gpio_isr_handler_add(GPIO_INPUT_IO_0, gpio_isr_handler, (void*) GPIO_INPUT_IO_0);
     gpio_isr_handler_add(GPIO_INPUT_IO_1, gpio_isr_handler, (void*) GPIO_INPUT_IO_1);
 }
 
-static void IRAM_ATTR gpio_isr_handler(void* arg)
-{
+static void IRAM_ATTR gpio_isr_handler(void* arg) {
     uint32_t gpio_num = (uint32_t) arg;
     xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
+}
+
+// =============================================================================
+//                                  NVS
+// =============================================================================
+
+void nvs_init() {
+    // Initialize NVS
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        // NVS partition was truncated and needs to be erased
+        // Retry nvs_flash_init
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(err);
+}
+
+void nvs_read() {
+    ESP_LOGI("NVS", "Opening Non-Volatile Storage (NVS) handle... ");
+    nvs_handle my_handle;
+    esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
+    if (err != ESP_OK) {
+        ESP_LOGI("NVS", "Error (%s) opening NVS handle!", esp_err_to_name(err));
+    } else {
+        ESP_LOGI("NVS", "Done");
+
+        // Read
+        int16_t _pokemon_seen = 0; // value will default to 0, if not set yet in NVS
+        int16_t _pokemon_caught = 0;
+        int16_t _pokestops = 0;
+        int8_t _font_color = 0;
+        err = nvs_get_i16(my_handle, "pokemon_seen", &_pokemon_seen);
+        if (err == ESP_OK) {
+            pokemon_seen = _pokemon_seen;
+            ESP_LOGI("NVS", "Done");
+        }
+        err = nvs_get_i16(my_handle, "pokemon_caught", &_pokemon_caught);
+        if (err == ESP_OK) {
+            pokemon_caught = _pokemon_caught;
+            ESP_LOGI("NVS", "Done");
+        }
+        err = nvs_get_i16(my_handle, "pokestops", &_pokestops);
+        if (err == ESP_OK) {
+            pokestops = _pokestops;
+            ESP_LOGI("NVS", "Done");
+        }
+        err = nvs_get_i8(my_handle, "font_color", &_font_color);
+        if (err == ESP_OK) {
+            font_color = _font_color;
+            font_color_old = font_color;
+            ESP_LOGI("NVS", "Done");
+        }
+
+        // Close
+        nvs_close(my_handle);
+    }
+}
+
+void nvs_write(int8_t type) {
+    if (nvs_lock == 0) {
+        nvs_lock = 1;
+        ESP_LOGI("NVS", "Opening Non-Volatile Storage (NVS) handle... ");
+        nvs_handle my_handle;
+        esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
+        if (err != ESP_OK) {
+            ESP_LOGI("NVS", "Error (%s) opening NVS handle!", esp_err_to_name(err));
+        } else {
+            ESP_LOGI("NVS", "Done");
+
+            // Write
+            if (type == NVS_STATS) {
+                err = nvs_set_i16(my_handle, "pokemon_seen", pokemon_seen);
+                if (err == ESP_OK) {
+                    ESP_LOGI("NVS", "Done");
+                }
+                err = nvs_set_i16(my_handle, "pokemon_caught", pokemon_caught);
+                if (err == ESP_OK) {
+                    ESP_LOGI("NVS", "Done");
+                }
+                err = nvs_set_i16(my_handle, "pokestops", pokestops);
+                if (err == ESP_OK) {
+                    ESP_LOGI("NVS", "Done");
+                }
+            } else if (type == NVS_COLOR) {
+                err = nvs_set_i8(my_handle, "font_color", font_color);
+                if (err == ESP_OK) {
+                    ESP_LOGI("NVS", "Done");
+                }
+            }
+
+            // Commit written value.
+            // After setting any values, nvs_commit() must be called to ensure changes are written
+            // to flash storage. Implementations may write to storage at other times,
+            // but this is not guaranteed.
+            ESP_LOGI("NVS", "Committing updates in NVS ... ");
+            err = nvs_commit(my_handle);
+            if (err == ESP_OK) {
+                ESP_LOGI("NVS", "Done");
+            }
+
+            // Close
+            nvs_close(my_handle);
+        }
+        nvs_lock = 0;
+    }
+}
+
+void nvs_check_color_change() {
+    if (font_color_old != font_color) {
+        font_color_old = font_color;
+        nvs_write(NVS_COLOR);
+    }
+}
+
+int8_t nvs_check_stats_change() {
+    if (display_state == 3) {
+        if (pokemon_changed != (pokemon_seen + pokemon_caught + pokestops)) {
+            pokemon_changed = (pokemon_seen + pokemon_caught + pokestops);
+            nvs_write(NVS_STATS);
+            return 1;
+        }
+    }
+    return 0;
 }
 
 // =============================================================================
@@ -1266,7 +1477,7 @@ void init_display() {
 
     ret = spi_lobo_bus_add_device(SPI_BUS, &buscfg, &devcfg, &spi);
     assert(ret == ESP_OK);
-    printf("SPI: display device added to spi bus (%d)\r\n", SPI_BUS);
+    ESP_LOGI("SPI", "display device added to spi bus (%d)", SPI_BUS);
     disp_spi = spi;
 
     // ==== Test select/deselect ====
@@ -1275,11 +1486,11 @@ void init_display() {
     ret = spi_lobo_device_deselect(spi);
     assert(ret == ESP_OK);
 
-    printf("SPI: attached display device, speed=%u\r\n", spi_lobo_get_speed(spi));
-    printf("SPI: bus uses native pins: %s\r\n", spi_lobo_uses_native_pins(spi) ? "true" : "false");
+    ESP_LOGI("SPI", "attached display device, speed=%u", spi_lobo_get_speed(spi));
+    ESP_LOGI("SPI", "bus uses native pins: %s", (spi_lobo_uses_native_pins(spi) ? "true" : "false"));
 
     // Initialize display
-    printf("SPI: display init...\r\n");
+    ESP_LOGI("SPI", "display init...");
     TFT_display_init();
     TFT_invertDisplay(INVERT_ON);
 
@@ -1287,33 +1498,60 @@ void init_display() {
     TFT_setRotation(LANDSCAPE);
     TFT_fillRect(0, 0, _width, _height, TFT_WHITE);
     TFT_setFont(MAIN_FONT, NULL);
-    _fg = TFT_YELLOW;
-    _bg = TFT_WHITE;//TFT_WHITE;
+    _fg = colors[font_color];
+    _bg = TFT_WHITE; //TFT_WHITE;
     // Red = Cyan
     // Green = Pink
     // Yellow = Blue (dark)
-    printf("OK\r\n");
+    ESP_LOGI("SPI", "Done");
 }
 
-void update_status_display(char *str) {
+void display_clean() {
     TFT_fillRect(0, 0, _width, _height, TFT_WHITE);
-    if (str != NULL) {
-        uint8_t w = TFT_getStringWidth(str);
-        TFT_print(str, (_width/2) - (w/2) + 3, (dispWin.y2 - dispWin.y1) / 2 - (TFT_getfontheight() / 2) + 3);
-    }
 }
 
-void update_display(char *str) {
+void update_status_display() {
+    char *str;
+    if (display_state == 0) {
+        TFT_setFont(POKEMON48_FONT, NULL);
+        str = "Sulpog";
+    } else if (display_state == 1) {
+        str = "Ready";
+        if (charging == 1) {
+            color_t black = {255, 255, 255};
+            TFT_fillRect((_width / 2) - 20, _height * 0.7, 40, 15, black);
+        } else {
+            char outbuf[16];
+            snprintf(outbuf, sizeof (outbuf), "%02d", current_time);
+            TFT_setFont(DETAIL_FONT, NULL);
+            uint8_t ww = TFT_getStringWidth(outbuf);
+            TFT_print(outbuf, (_width / 2) - (ww / 2) + 3, _height * 0.7);
+        }
+        TFT_setFont(MAIN_FONT, NULL);
+    } else if (display_state == 2) {
+        color_t black = {255, 255, 255};
+        TFT_fillRect((_width / 2) - 20, _height * 0.7, 40, 15, black);
+        TFT_setFont(MAIN_FONT, NULL);
+        str = "Connecting";
+    } else {
+        TFT_setFont(MAIN_FONT, NULL);
+        str = "";
+    }
+    uint8_t w = TFT_getStringWidth(str);
+    TFT_print(str, ((dispWin.x2 - dispWin.x1) / 2) - (w / 2), (dispWin.y2 - dispWin.y1) / 2 - (TFT_getfontheight() / 2));
+}
+
+void update_display() {
     //stats
-    uint16_t total = (pokemon_seen + pokemon_cought + pokestops);
-    if (pokemon_changed != total) {
-        pokemon_changed = total;
+    if (nvs_check_stats_change() == 1 || display_state < 3) {
         char outbuf[100];
-        snprintf(outbuf, sizeof (outbuf), "%u / %u", pokemon_cought, pokemon_seen);
+        snprintf(outbuf, sizeof (outbuf), "%u / %u", pokemon_caught, pokemon_seen);
         TFT_setFont(DETAIL_FONT, NULL);
+
         //draw catches
         //TFT_print(outbuf, 5, (dispWin.y2 - dispWin.y1) / 2 - (TFT_getfontheight() - 4) - 40);
         TFT_print(outbuf, 5, 5);
+
         //draw stops
         uint16_t length = snprintf(NULL, 0, "%u", pokestops);
         char* pokestops_str = malloc(length + 1);
@@ -1324,10 +1562,69 @@ void update_display(char *str) {
         free(pokestops_str);
     }
 
-    //clock
-    TFT_setFont(MAIN_FONT, NULL);
-    uint8_t ww = TFT_getStringWidth(str);
-    TFT_print(str,  (_width/2) - (ww/2) + 3, (dispWin.y2 - dispWin.y1) / 2 - (TFT_getfontheight() / 2) + 3);
+    if (display_state == 3) {
+        //clock
+        //TFT_setFont(MAIN_FONT, NULL);
+        TFT_setFont(DIGITAL32_FONT, NULL);
+        char str[16];
+        snprintf(str, sizeof (str), "%02d:%02d", minute, second);
+        uint8_t ww = TFT_getStringWidth(str);
+        TFT_print(str, ((dispWin.x2 - dispWin.x1) / 2) - (ww / 2), (dispWin.y2 - dispWin.y1) / 2 - (TFT_getfontheight() / 2));
+    }
+}
+
+uint32_t calculate_battery() {
+    //battery percentage
+    uint32_t adc_reading = 0;
+    uint8_t NO_OF_SAMPLES = 64;
+    adc1_config_width(ADC_WIDTH_BIT_10); //ADC_WIDTH_BIT_10
+    adc1_config_channel_atten(ADC1_CHANNEL_6, ADC_ATTEN_DB_11); //ADC_ATTEN_DB_6
+
+    //esp_adc_cal_characteristics_t *adc_chars = calloc(1, sizeof(esp_adc_cal_characteristics_t));
+    //Type of calibration value used to characterize ADC is eFuse Vref
+
+    for (int i = 0; i < NO_OF_SAMPLES; i++) {
+        adc_reading += adc1_get_raw(ADC1_CHANNEL_6);
+    }
+    adc_reading /= NO_OF_SAMPLES;
+
+    charging = (adc_reading >= BATTERY_MAX + BATTERY_OFFSET);
+
+    //ESP_LOGI("BATTERY", "Raw %i", adc_reading);
+
+    //uint32_t voltage = esp_adc_cal_raw_to_voltage(adc_reading, adc_chars);
+    //ESP_LOGI("BATTERY", "Voltage %imV", voltage);
+    return adc_reading;
+}
+
+void draw_battery() {
+    //draw battery number
+    TFT_setFont(DETAIL_FONT, NULL);
+    uint32_t adc_reading = calculate_battery();
+    uint16_t length = snprintf(NULL, 0, "%u", adc_reading);
+    char* battery_str = malloc(length + 1);
+    snprintf(battery_str, length + 1, "%u", adc_reading);
+    uint8_t w = TFT_getStringWidth(battery_str);
+    uint8_t h = TFT_getfontheight(battery_str);
+    //TFT_print(pokestops_str, _width - w - 3, (dispWin.y2 - dispWin.y1) / 2 - (TFT_getfontheight() - 4) - 40);
+    TFT_print(battery_str, _width - w - 3, _height - h - 5);
+    free(battery_str);
+
+    uint8_t x = 5;
+    uint8_t y = _height - 10 - 2;
+
+    uint8_t width = 24;
+    uint8_t height = 12;
+    adc_reading = (adc_reading > BATTERY_MIN) ? adc_reading : BATTERY_MIN;
+    adc_reading = (adc_reading < BATTERY_MAX) ? adc_reading : BATTERY_MAX;
+    uint8_t part = ((float) (adc_reading - BATTERY_MIN) / (float) (BATTERY_MAX - BATTERY_MIN)) * (width - 4);
+
+    TFT_drawRect(x, y - (height / 2), width, height, colors[font_color]);
+    TFT_fillRect(x + width, (uint8_t) y - (height / 4), (uint8_t) (width / 8), (uint8_t) (height / 2), colors[font_color]);
+
+    TFT_fillRect(x + 2, y - (height / 2) + 2, part, height - 4, colors[font_color]);
+    color_t black = {255, 255, 255};
+    TFT_fillRect(x + 2 + part, y - (height / 2) + 2, (width - 4) - part, height - 4, black);
 }
 
 // =============================================================================
@@ -1335,12 +1632,17 @@ void update_display(char *str) {
 // =============================================================================
 
 void app_main() {
+    // NVS
+    nvs_init();
+    nvs_read();
+
     // Draw
     init_display();
     ESP_LOGI("DISPLAY", "Trying to draw something..");
-    update_status_display("Loading");
+    display_clean();
+    update_status_display();
     ESP_LOGI("DISPLAY", "Done");
-    
+
     ESP_LOGI("GPIO", "Initialising button..");
     configure_gpio();
     ESP_LOGI("GPIO", "Done");
@@ -1459,35 +1761,10 @@ void app_main() {
     if (local_mtu_ret) {
         ESP_LOGE(GATTS_TABLE_TAG, "set local  MTU failed, error code = %x", local_mtu_ret);
     }
-    
+
     if (xHandleWaiting == NULL) {
         xTaskCreate(waiting_task, "waiting_task", 2048, NULL, 12, &xHandleWaiting);
     }
-    
-    // BATTERY TEST
-    /*uint32_t adc_reading = 0;
-    uint8_t NO_OF_SAMPLES = 64;
-    adc1_config_width(ADC_WIDTH_BIT_12);
-    adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_DB_0);
-    
-    esp_adc_cal_characteristics_t *adc_chars = calloc(1, sizeof(esp_adc_cal_characteristics_t));
-    esp_adc_cal_value_t val_type = esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_0, ADC_WIDTH_BIT_12, 1100, adc_chars);
-    //Check type of calibration value used to characterize ADC
-    if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
-        printf("eFuse Vref");
-    } else if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP) {
-        printf("Two Point");
-    } else {
-        printf("Default");
-    }
-    
-    for (int i = 0; i < NO_OF_SAMPLES; i++) {
-        adc_reading += adc1_get_raw(ADC1_CHANNEL_7);
-    }
-    adc_reading /= NO_OF_SAMPLES;
-    
-    ESP_LOGI("BATTERY", "Raw %i", adc_reading);
-    
-    uint32_t voltage = esp_adc_cal_raw_to_voltage(adc_reading, adc_chars);
-    ESP_LOGI("BATTERY", "Voltage %imV", voltage);*/
+
+    display_state = 1;
 }
