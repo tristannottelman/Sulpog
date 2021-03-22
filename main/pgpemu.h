@@ -47,6 +47,7 @@
 
 #define PATTERN_STOP_START 204
 #define PATTERN_STOP_SUCCES 135
+#define PATTERN_STOP_SUCCES2 225
 #define PATTERN_GYM_SUCCES 59
 #define PATTERN_CATCH_START 114
 #define PATTERN_CATCH_START_NEW 0 //new encounters
@@ -135,8 +136,7 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
 // Tasks
 static void auto_button_task(void *pvParameters);
 static void uart_event_task(void *pvParameters);
-static void clock_task(void *pvParameters);
-static void waiting_task(void *pvParameters);
+static void main_task(void *pvParameters);
 static void gpio_task(void* arg);
 
 // GPIO
@@ -145,7 +145,7 @@ static void IRAM_ATTR gpio_isr_handler(void* arg);
 
 // NVS
 void nvs_init();
-void nvs_write(int8_t type);
+void nvs_write();
 void nvs_read();
 void nvs_check_color_change();
 int8_t nvs_check_stats_change();
@@ -153,8 +153,11 @@ int8_t nvs_check_stats_change();
 // Display
 void init_display();
 void display_clean();
-void update_status_display();
-void update_display();
+void display_clean_status();
+void display_clean_stats();
+void draw_screen();
+void draw_status();
+void draw_stats();
 uint32_t calculate_battery();
 void draw_battery();
 
