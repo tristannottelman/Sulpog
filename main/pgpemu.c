@@ -689,7 +689,7 @@ void handle_protocol(esp_gatt_if_t gatts_if, const uint8_t *prepare_buf, int dat
                 pokemon_caught = pokemon_seen = pokestops = 0;
                 pokemon_changed = 2000;
                 minute = 60;
-                second = 1;
+                second = 0;
             }
             break;
         }
@@ -927,7 +927,7 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
             refresh_screen = 1;
             screensaver = screensaver_time;
             screen_on = 1;
-            current_time = waiting_time + 1;
+            current_time = waiting_time;
             gpio_set_level(GPIO_OUTPUT_IO, screen_on);
             cert_state = 0;
             nvs_write();
@@ -1122,7 +1122,7 @@ static void auto_button_task(void *pvParameters) {
 static void main_task(void *pvParameters) {
     int16_t task_time = 0;
     charging_prev = charging;
-    current_time = waiting_time + 1;
+    current_time = waiting_time;
     while (1) {
         if (display_state == 3) {
             // Connected

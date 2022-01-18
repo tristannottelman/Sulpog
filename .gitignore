@@ -7,3 +7,5 @@ nbproject
 
 led.txt
 log.txt
+error.txt
+sdkconfig_backup
