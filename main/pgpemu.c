@@ -165,7 +165,7 @@ static uint8_t cert_buffer[378];
 
 static const uint16_t GATTS_SERVICE_UUID_BATTERY = 0x180f;
 static const uint16_t GATTS_CHAR_UUID_BATTERY_LEVEL = 0x2a19;
-static const uint8_t battery_char_value[1] = {0x60};
+static uint8_t battery_char_value[1] = {0x10};
 
 
 static uint8_t reconnect_challenge[32];
@@ -1644,8 +1644,17 @@ uint32_t calculate_battery() {
     adc_reading /= NO_OF_SAMPLES;
 
     charging = (adc_reading >= BATTERY_MAX + BATTERY_OFFSET);
+	
+	battery_char_value[0] = ((adc_reading - BATTERY_MIN) / BATTERY_MAX);
+	if (battery_char_value[0] > 100) battery_char_value[0] = 100;
+	ESP_LOGI("BATTERY", "percentage %i", battery_char_value[0]);
+	
+	uint8_t notify_percentage[1];
+	memset(notify_percentage, 0, 1);
+	notify_percentage[0] = battery_char_value[0];
+	esp_ble_gatts_send_indicate(last_if, last_conn_id, battery_handle_table[IDX_CHAR_BATTERY_LEVEL_VAL], sizeof (notify_percentage), notify_percentage, false);
 
-    //ESP_LOGI("BATTERY", "Raw %i", adc_reading);
+    ESP_LOGI("BATTERY", "Raw %i", adc_reading);
 
     //uint32_t voltage = esp_adc_cal_raw_to_voltage(adc_reading, adc_chars);
     //ESP_LOGI("BATTERY", "Voltage %imV", voltage);
@@ -1687,6 +1696,8 @@ void draw_battery() {
 // =============================================================================
 
 void app_main() {
+	calculate_battery();
+
     // NVS
     nvs_init();
     nvs_read();
