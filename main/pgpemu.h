@@ -160,6 +160,7 @@ void draw_status();
 void draw_stats();
 uint32_t calculate_battery();
 void draw_battery();
+void draw_device();
 
 // Main
 void app_main();

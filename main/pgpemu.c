@@ -45,6 +45,7 @@ int16_t pokemon_seen = 0;
 int16_t pokemon_caught = 0;
 int16_t pokestops = 0;
 int16_t pokemon_changed = 0;
+int8_t device = 0;
 
 uint8_t screensaver = 0;
 uint8_t screensaver_time = 30;
@@ -1338,6 +1339,7 @@ void nvs_read() {
         int8_t _font_color = 0;
         int8_t _minute = 60;
         int8_t _second = 0;
+		int8_t _device = 0;
         err = nvs_get_i16(my_handle, "pokemon_seen", &_pokemon_seen);
         if (err == ESP_OK) {
             pokemon_seen = _pokemon_seen;
@@ -1366,6 +1368,11 @@ void nvs_read() {
         err = nvs_get_i8(my_handle, "second", &_second);
         if (err == ESP_OK) {
             second = _second;
+            ESP_LOGI("NVS", "Done");
+        }
+		err = nvs_get_i8(my_handle, "device", &_device);
+        if (err == ESP_OK) {
+            device = _device;
             ESP_LOGI("NVS", "Done");
         }
 
@@ -1409,6 +1416,10 @@ void nvs_write() {
                 ESP_LOGI("NVS", "Done");
             }
             err = nvs_set_i8(my_handle, "second", second);
+            if (err == ESP_OK) {
+                ESP_LOGI("NVS", "Done");
+            }
+			err = nvs_set_i8(my_handle, "device", device);
             if (err == ESP_OK) {
                 ESP_LOGI("NVS", "Done");
             }
@@ -1628,6 +1639,13 @@ void draw_stats() {
     TFT_print(str, ((dispWin.x2 - dispWin.x1) / 2) - (ww / 2), (dispWin.y2 - dispWin.y1) / 2 - (TFT_getfontheight() / 2));
 }
 
+void draw_device() {
+	char str[5];
+    snprintf(str, sizeof (str), "%i", device);
+	TFT_setFont(DETAIL_FONT, NULL);
+	TFT_print(str, _width-10, (_height - 14) - (TFT_getfontheight() / 2));
+}
+
 uint32_t calculate_battery() {
     //battery percentage
     uint32_t adc_reading = 0;
@@ -1701,6 +1719,9 @@ void app_main() {
     // NVS
     nvs_init();
     nvs_read();
+	
+	// Set device
+	set_device(device);
 
     // Draw
     init_display();
@@ -1712,7 +1733,19 @@ void app_main() {
     ESP_LOGI("GPIO", "Initialising button..");
     configure_gpio();
     ESP_LOGI("GPIO", "Done");
-
+	
+	// Check for device switch
+	if (gpio_get_level(GPIO_INPUT_IO_1) == 0) {
+		if (device > 2) {
+			device = 0;
+		} else {
+			device = device + 1;
+		}
+		set_device(device);
+		nvs_write();
+	}
+	draw_device();
+	
     /* Initialize NVS. */
     esp_err_t ret;
 
@@ -1765,9 +1798,6 @@ void app_main() {
         ESP_LOGE(GATTS_TABLE_TAG, "%s enable controller failed: %s", __func__, esp_err_to_name(ret));
         return;
     }
-
-
-
 
     esp_log_buffer_hex(GATTS_TABLE_TAG, cert_buffer, sizeof (cert_buffer));
     ret = esp_bt_controller_enable(ESP_BT_MODE_BLE);
