@@ -1663,8 +1663,10 @@ uint32_t calculate_battery() {
 
     charging = (adc_reading >= BATTERY_MAX + BATTERY_OFFSET);
 	
-	battery_char_value[0] = (((adc_reading - BATTERY_MIN) / (BATTERY_MAX - BATTERY_MIN)) * 100);
+	battery_char_value[0] = (((double)(adc_reading - BATTERY_MIN) / (BATTERY_MAX - BATTERY_MIN)) * 100);
 	if (battery_char_value[0] > 100) battery_char_value[0] = 100;
+	
+	//ESP_LOGI("BATTERY", "Perc %i", battery_char_value[0]);
 	
 	// Send battery percentage
 	//uint8_t notify_percentage[1];
