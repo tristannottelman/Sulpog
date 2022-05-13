@@ -1738,7 +1738,7 @@ void app_main() {
 	
 	// Check for device switch
 	if (gpio_get_level(GPIO_INPUT_IO_1) == 0) {
-		if (device > 2) {
+		if (device > 4) {
 			device = 0;
 		} else {
 			device = device + 1;
