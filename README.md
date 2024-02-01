@@ -22,14 +22,20 @@ This fork adds some features:
 
 ## Board
 LilyGO TTGO T-Display with TFT Display
+https://aliexpress.com/item/33048962331.html
 
 ## Case
+Large case, 852540
 https://www.thingiverse.com/thing:4183337
 
 ## Battery
 https://www.amazon.com/dp/B07CXNQ3ZR/ref=cm_sw_em_r_mt_dp_U_0XovEbVB7EPGM
 
 ## Get started
+Use [Suota-Go-Plus](https://github.com/Jesus805/Suota-Go-Plus) to extract the keys. If you get an error at step 10, pair the device manually, then it works.
+
+Add the keys in [main/secrets.c](main/secrets.c).
+
 Run command to get a config file.
 ```
 idf menuconfig
