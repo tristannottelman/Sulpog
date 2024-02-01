@@ -1,6 +1,8 @@
 # Sulpog
 Pokemon GO Plus emulator using ESP32 with display (fork).
 
+![Alt text](Sulpogs.jpg?raw=true "Sulpogs")
+
 ## Features
 This fork adds some features:
 
