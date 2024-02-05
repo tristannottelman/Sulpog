@@ -54,7 +54,7 @@ Run command to get a config file.
 idf menuconfig
 ```
 
-Select 'TFT_display_configuration' and then 'Select predefined display configuration' and choose the device you have. You can now build and flash the software.
+The TTGO T-Display should be selected by default. To change it, select 'TFT_display_configuration', then 'Select predefined display configuration' and choose the device you have. You can now build and flash the software.
 
 Device specific configuration can be changed in [components/tft/tftspi.h](components/tft/tftspi.h).
 
