@@ -5,6 +5,8 @@ This project is a DIY clone of the Pokémon Go Plus device, designed to interact
 
 ![Alt text](Sulpogs.jpg?raw=true "Sulpogs")
 
+![Alt text](Diagram.png?raw=true "Diagram")
+
 ## Features
 This fork adds some features:
 
