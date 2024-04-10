@@ -1182,7 +1182,7 @@ static void main_task(void *pvParameters) {
                 draw_screen();
             }
             
-            if (charging == 1) {
+            if (charging == 1 || OPTION_USE_SLEEP == 0) {
                 current_time = waiting_time + 2;
             } else {
                 if (current_time == 0) {
@@ -1590,8 +1590,11 @@ void draw_status() {
             display_state_ready = charging;
         }
         char outbuf[16];
-        if (charging == 1) snprintf(outbuf, sizeof (outbuf), "Ready");
-        else snprintf(outbuf, sizeof (outbuf), "Ready %02d", current_time);
+        if (charging == 1 || OPTION_USE_SLEEP == 0) {
+            snprintf(outbuf, sizeof (outbuf), "Ready");
+        } else {
+            snprintf(outbuf, sizeof (outbuf), "Ready %02d", current_time);
+        }
         TFT_setFont(DETAIL_FONT, NULL);
         TFT_print(outbuf, (_width / 2) - (TFT_getStringWidth(outbuf) / 2), (_height - 14) - (TFT_getfontheight() / 2));
         return;

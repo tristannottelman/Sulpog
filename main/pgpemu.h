@@ -54,6 +54,9 @@
 #define PATTERN_CATCH_SUCCES 6
 #define PATTERN_CATCH_FAIL 117
 
+// Options
+#define OPTION_USE_SLEEP 1
+
 // The battery decreased faster below 500 and really fast below 450
 #define BATTERY_MAX 596 //600 should be safer
 #define BATTERY_MIN 420
@@ -147,7 +150,6 @@ static void IRAM_ATTR gpio_isr_handler(void* arg);
 void nvs_init();
 void nvs_write();
 void nvs_read();
-void nvs_check_color_change();
 int8_t nvs_check_stats_change();
 
 // Display

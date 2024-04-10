@@ -34,6 +34,9 @@
 #include <sys/dirent.h>
 #include "sdkconfig.h"
 
+#ifndef MAXNAMLEN
+#define MAXNAMLEN 4096
+#endif
 
 #ifdef PATH_MAX
 #undef PATH_MAX
