@@ -5,6 +5,8 @@ This project is a DIY clone of the Pokémon Go Plus device, designed to interact
 
 ![Alt text](Sulpogs.jpg?raw=true "Sulpogs")
 
+![Alt text](Sulpogs2.jpg?raw=true "Sulpogs (alt case)")
+
 ![Alt text](Diagram.png?raw=true "Diagram")
 
 ## Features
@@ -36,6 +38,14 @@ The heart of the project, providing Bluetooth connectivity, processing power, an
 Although not an electronic component, a custom-designed 3D printed case can house the ESP32 and other components.
 
 [Large case, 852540 by Stevesch](https://www.thingiverse.com/thing:4183337)
+
+@rhuba8324 has developed an improved version of the case for the TTGO T-Display, addressing some known issues. This includes the following improvements:
+
+* This case has been revised to better withstand the USB-C cable being pulled out and accommodates T-Displays with screens in slightly different positions.
+* A slot for a switch button has been added to the case.
+* The buttons have been reinforced to prevent them from breaking easily during use.
+
+[Alternative case by @rhuba8324](https://www.printables.com/model/817468-ttgo-t-display-cases)
 
 ### Battery
 A battery such as MakerFocus 4pcs 3.7V Lithium Rechargeable Battery JST1.25 Connector 2pin, 952540 3.7V 1000mAh Battery with Protection Board and Insulated Rubber Tape Compatible with ESP32 Development Board.
