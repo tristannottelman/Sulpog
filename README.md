@@ -23,8 +23,8 @@ This fork adds some features:
 * Setting: toggle between multiple PGP secrets (hold 'display on/off' and press power button)
 
 ## Known issues
-* Battery will drain in sleep mode (unfortunately, you cannot turn the ESP32 off)
-* Buttons on the 3D printed case are very fragile
+* ~~Battery will drain in sleep mode (unfortunately, you cannot turn the ESP32 off)~~
+* ~~Buttons on the 3D printed case are very fragile~~
 
 ## Requirements
 Below is a comprehensive list of the components needed to build your own Sulpog.
